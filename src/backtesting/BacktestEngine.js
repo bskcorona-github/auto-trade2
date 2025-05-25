@@ -227,30 +227,28 @@ class BacktestEngine {
    * @returns {number} - ポジションサイズ
    */
   calculatePositionSize() {
-    // 最も単純で安全な方法：常に初期資金に対する一定割合を使用
-    const fixedPositionSize =
-      this.initialBalance * (this.positionSizePercent / 100);
+    // 常に現在資産に基づいてポジションサイズを計算
+    const basePositionSize =
+      this.currentBalance * (this.positionSizePercent / 100);
 
-    // 資産増加に応じた段階的なポジションサイズ制限
+    // 資産増加に応じた段階的な調整係数
+    // 過度なレバレッジを防ぐための安全策
     const balanceMultiple = this.currentBalance / this.initialBalance;
-
-    // 資産増加率に応じたポジションサイズの調整係数
     let adjustmentFactor = 1.0;
 
     if (balanceMultiple > 10) {
-      adjustmentFactor = 0.1; // 初期資金の10倍以上の場合、サイズを小さく
+      // 初期資金の10倍以上の場合、過度なリスクを抑制
+      adjustmentFactor = 0.5;
     } else if (balanceMultiple > 5) {
-      adjustmentFactor = 0.2; // 初期資金の5倍以上の場合
+      // 初期資金の5倍以上の場合
+      adjustmentFactor = 0.7;
     } else if (balanceMultiple > 2) {
-      adjustmentFactor = 0.5; // 初期資金の2倍以上の場合
+      // 初期資金の2倍以上の場合
+      adjustmentFactor = 0.9;
     }
 
-    // 現在の残高に対するポジションサイズを調整
-    const dynamicPositionSize =
-      this.currentBalance * (this.positionSizePercent / 100) * adjustmentFactor;
-
-    // 固定サイズと調整サイズの小さい方を採用（安全策）
-    return Math.min(dynamicPositionSize, fixedPositionSize);
+    // 現在資産に基づくポジションサイズに調整係数を適用
+    return basePositionSize * adjustmentFactor;
   }
 
   /**
