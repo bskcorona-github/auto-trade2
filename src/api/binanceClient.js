@@ -113,8 +113,12 @@ async function getCandles({
             startTime
           ).toISOString()} から ${new Date(endTime).toISOString()}`
         );
+
+        // メモリ効率のために配列連結を避ける
+        const allCandles = [];
         let currentStartTime = startTime;
-        let allCandles = [];
+        let requestCount = 0;
+        const startTimestamp = Date.now();
 
         while (currentStartTime < endTime) {
           // 次のチャンクの終了時間を計算（最大でendTimeまで）
@@ -123,7 +127,7 @@ async function getCandles({
             endTime
           );
 
-          // データを取得してマージ
+          // データを取得して追加（スプレッド演算子を使わない）
           const chunkCandles = await fetchCandlesChunk(
             symbol,
             interval,
@@ -131,7 +135,11 @@ async function getCandles({
             currentStartTime,
             chunkEndTime
           );
-          allCandles = [...allCandles, ...chunkCandles];
+
+          // 効率的な配列追加
+          for (const candle of chunkCandles) {
+            allCandles.push(candle);
+          }
 
           // 次のチャンクの開始時間を設定（最後のローソク足の次から）
           if (chunkCandles.length > 0) {
@@ -143,20 +151,37 @@ async function getCandles({
             currentStartTime = chunkEndTime + 1;
           }
 
+          // リクエストカウントを増やす
+          requestCount++;
+
           // 進捗ログ
+          const progressPercent = Math.floor(
+            ((currentStartTime - startTime) / (endTime - startTime)) * 100
+          );
           logger.debug(
-            `バックテストデータ取得進捗: ${new Date(
-              currentStartTime
-            ).toISOString()} / ${new Date(endTime).toISOString()} (${Math.floor(
-              ((currentStartTime - startTime) / (endTime - startTime)) * 100
-            )}%)`
+            `バックテストデータ取得進捗: ${progressPercent}% (${requestCount}リクエスト, ${allCandles.length}件取得済)`
           );
 
-          // API制限に配慮して少し待機
-          await new Promise((resolve) => setTimeout(resolve, 100));
+          // API制限に配慮して動的に待機時間を調整
+          const elapsedTime = Date.now() - startTimestamp;
+          const requestsPerMinute = (requestCount / elapsedTime) * 60000;
+
+          // Binanceの制限に近づいている場合は待機時間を長くする
+          let waitTime = 100; // デフォルト待機時間(ms)
+
+          if (requestsPerMinute > 800) {
+            // Binanceの制限は1200/分だが余裕を持つ
+            waitTime = 300;
+          } else if (requestsPerMinute > 500) {
+            waitTime = 200;
+          }
+
+          await new Promise((resolve) => setTimeout(resolve, waitTime));
         }
 
-        logger.info(`取得完了: 合計 ${allCandles.length} 件のローソク足データ`);
+        logger.info(
+          `取得完了: 合計 ${allCandles.length} 件のローソク足データ (${requestCount}回のリクエスト)`
+        );
         return allCandles;
       }
     }

@@ -99,6 +99,9 @@ class BacktestEngine {
    * @param {Array} candles - ローソク足データ
    */
   processSignal(signal, candles) {
+    // 各シグナルでの現在価格でのドローダウンを更新
+    this.updateMaxDrawdownWithCurrentPrice(signal.price);
+
     if (!this.position) {
       // ポジションがない場合は新規に開く
       if (signal.type === "BUY") {
@@ -163,15 +166,17 @@ class BacktestEngine {
     let profit = 0;
 
     if (this.position.type === "BUY") {
+      // ロングポジションの利益計算
       profit =
         positionValue -
         this.position.units * this.position.entryPrice -
         fee -
         this.position.fee;
     } else {
+      // ショートポジションの利益計算（修正）
+      // 利益 = (エントリー価格 - 決済価格) * 数量 - 手数料
       profit =
-        this.position.units * this.position.entryPrice -
-        positionValue -
+        (this.position.entryPrice - exitPrice) * this.position.units -
         fee -
         this.position.fee;
     }
@@ -222,27 +227,30 @@ class BacktestEngine {
    * @returns {number} - ポジションサイズ
    */
   calculatePositionSize() {
-    // 資金の一部を使用（設定されたポジションサイズの割合）
-    // 常に初期資金に対する一定の割合を使用することで、指数関数的な増加を防ぐ
-    const maxPositionSize =
+    // 最も単純で安全な方法：常に初期資金に対する一定割合を使用
+    const fixedPositionSize =
       this.initialBalance * (this.positionSizePercent / 100);
 
-    // 現在の残高に基づくポジションサイズ（これが問題の原因）
-    // const positionSize = this.currentBalance * (this.positionSizePercent / 100);
+    // 資産増加に応じた段階的なポジションサイズ制限
+    const balanceMultiple = this.currentBalance / this.initialBalance;
 
-    // 最大許容ポジションサイズを初期資金の10倍に制限
-    const safeguardLimit = this.initialBalance * 10;
+    // 資産増加率に応じたポジションサイズの調整係数
+    let adjustmentFactor = 1.0;
 
-    // 現在残高がsafeguardLimitを超えた場合は固定額でトレード
-    if (this.currentBalance > safeguardLimit) {
-      return maxPositionSize;
+    if (balanceMultiple > 10) {
+      adjustmentFactor = 0.1; // 初期資金の10倍以上の場合、サイズを小さく
+    } else if (balanceMultiple > 5) {
+      adjustmentFactor = 0.2; // 初期資金の5倍以上の場合
+    } else if (balanceMultiple > 2) {
+      adjustmentFactor = 0.5; // 初期資金の2倍以上の場合
     }
 
-    // 現在の残高に対するポジションサイズと最大許容サイズの小さい方を使用
-    return Math.min(
-      this.currentBalance * (this.positionSizePercent / 100),
-      maxPositionSize
-    );
+    // 現在の残高に対するポジションサイズを調整
+    const dynamicPositionSize =
+      this.currentBalance * (this.positionSizePercent / 100) * adjustmentFactor;
+
+    // 固定サイズと調整サイズの小さい方を採用（安全策）
+    return Math.min(dynamicPositionSize, fixedPositionSize);
   }
 
   /**
@@ -258,11 +266,16 @@ class BacktestEngine {
 
     let positionValue = 0;
     if (this.position.type === "BUY") {
+      // ロングポジションの評価
       positionValue = this.position.units * currentPrice;
     } else {
+      // ショートポジションの評価（修正）
+      // 旧: this.position.units * this.position.entryPrice * 2 - this.position.units * currentPrice;
+      // ショートポジションの利益/損失は (エントリー価格 - 現在価格) * 数量
+      const profitLoss =
+        (this.position.entryPrice - currentPrice) * this.position.units;
       positionValue =
-        this.position.units * this.position.entryPrice * 2 -
-        this.position.units * currentPrice;
+        this.position.units * this.position.entryPrice + profitLoss;
     }
 
     return this.currentBalance + positionValue;
@@ -289,6 +302,34 @@ class BacktestEngine {
     }
 
     this.maxDrawdown = maxDrawdown;
+  }
+
+  /**
+   * ポジションの含み損益を考慮した最大ドローダウンを更新
+   * @param {number} currentPrice - 現在の価格
+   */
+  updateMaxDrawdownWithCurrentPrice(currentPrice) {
+    // 現在の純資産を計算
+    const currentEquity = this.calculateEquity(currentPrice);
+
+    // 過去の最高純資産を特定
+    let peak = this.initialBalance;
+    for (const point of this.equity) {
+      if (point.equity > peak) {
+        peak = point.equity;
+      }
+    }
+
+    // 現在の純資産が新しいピークなら更新
+    if (currentEquity > peak) {
+      peak = currentEquity;
+    }
+
+    // ドローダウンを計算
+    const drawdown = (peak - currentEquity) / peak;
+    if (drawdown > this.maxDrawdown) {
+      this.maxDrawdown = drawdown;
+    }
   }
 
   /**

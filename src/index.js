@@ -105,17 +105,18 @@ app.post("/api/backtest", async (req, res) => {
       );
     }
 
-    // レスポンスにローソク足データを含める（必要に応じて一部のみ）
+    // レスポンスデータにローソク足データを含める（必要に応じて一部のみ）
     // データが大きすぎる場合はサンプルデータのみを返す
     const maxCandles = 1000; // レスポンスに含めるローソク足の最大数
     let includedCandles = candles;
 
     if (candles.length > maxCandles) {
-      // データが多すぎる場合は均等にサンプリング
-      const step = Math.floor(candles.length / maxCandles);
-      includedCandles = candles
-        .filter((_, index) => index % step === 0)
-        .slice(0, maxCandles);
+      // インテリジェントなサンプリングを実行
+      includedCandles = intelligentSampling(
+        candles,
+        result.signals,
+        maxCandles
+      );
       logger.info(
         `大量データのため ${candles.length} 件から ${includedCandles.length} 件にサンプリング`
       );
@@ -134,6 +135,66 @@ app.post("/api/backtest", async (req, res) => {
     res.status(500).json({ success: false, error: error.message });
   }
 });
+
+/**
+ * インテリジェントなサンプリングを実行
+ * シグナルポイントを優先しつつ、均等なサンプリングも行う
+ * @param {Array} candles - 全ローソク足データ
+ * @param {Array} signals - シグナルデータ
+ * @param {number} maxSamples - 最大サンプル数
+ * @returns {Array} - サンプリングされたローソク足データ
+ */
+function intelligentSampling(candles, signals, maxSamples) {
+  // シグナルポイントに対応するキャンドルを抽出
+  const signalIndices = new Set();
+
+  if (signals && signals.length > 0) {
+    signals.forEach((signal) => {
+      if (
+        signal.candleIndex !== undefined &&
+        signal.candleIndex < candles.length
+      ) {
+        signalIndices.add(signal.candleIndex);
+      }
+    });
+  }
+
+  // シグナルポイントの数を考慮して残りのポイント数を計算
+  const signalCount = signalIndices.size;
+  const remainingSamples = Math.max(0, maxSamples - signalCount);
+
+  // 残りのポイントを均等に分布させる
+  const sampledCandles = [];
+
+  if (remainingSamples > 0) {
+    // 均等なステップを計算
+    const step = Math.max(1, Math.floor(candles.length / remainingSamples));
+
+    // 均等サンプリング
+    for (let i = 0; i < candles.length; i += step) {
+      // シグナルポイントでなければ追加
+      if (!signalIndices.has(i)) {
+        sampledCandles.push(candles[i]);
+      }
+
+      // 最大サンプル数に達したら終了
+      if (sampledCandles.length >= remainingSamples) {
+        break;
+      }
+    }
+  }
+
+  // シグナルポイントを追加
+  signalIndices.forEach((index) => {
+    sampledCandles.push(candles[index]);
+  });
+
+  // 時間順にソート
+  sampledCandles.sort((a, b) => a.time - b.time);
+
+  // 最大サンプル数に制限
+  return sampledCandles.slice(0, maxSamples);
+}
 
 // APIエンドポイント - 戦略パラメータ最適化
 app.post("/api/optimize", async (req, res) => {

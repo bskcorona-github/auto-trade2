@@ -8,11 +8,48 @@ const logger = require("../utils/logger");
  */
 class MovingAverageCrossover {
   constructor(params = {}) {
+    // パラメータのバリデーション
+    this.validateParams(params);
+
     // デフォルトパラメータ
     this.shortPeriod = params.shortPeriod || 9;
     this.longPeriod = params.longPeriod || 21;
     this.name = "MovingAverageCrossover";
     this.description = `移動平均線クロスオーバー戦略 (短期: ${this.shortPeriod}, 長期: ${this.longPeriod})`;
+  }
+
+  /**
+   * パラメータのバリデーション
+   * @param {Object} params - 戦略パラメータ
+   */
+  validateParams(params) {
+    // 短期MAと長期MAの妥当性チェック
+    if (params.shortPeriod && params.longPeriod) {
+      if (params.shortPeriod >= params.longPeriod) {
+        throw new Error(
+          `無効なパラメータ: 短期期間(${params.shortPeriod})は長期期間(${params.longPeriod})より小さい必要があります`
+        );
+      }
+    }
+
+    // 数値チェック
+    if (
+      params.shortPeriod &&
+      (typeof params.shortPeriod !== "number" || params.shortPeriod <= 1)
+    ) {
+      throw new Error(
+        `無効な短期期間: ${params.shortPeriod}. 2以上の整数である必要があります`
+      );
+    }
+
+    if (
+      params.longPeriod &&
+      (typeof params.longPeriod !== "number" || params.longPeriod <= 2)
+    ) {
+      throw new Error(
+        `無効な長期期間: ${params.longPeriod}. 3以上の整数である必要があります`
+      );
+    }
   }
 
   /**
@@ -47,7 +84,21 @@ class MovingAverageCrossover {
 
       // 結果の長さを合わせる
       const diff = shortMA.length - longMA.length;
-      const shortMAAligned = shortMA.slice(-longMA.length);
+      const shortMAAligned = shortMA.slice(diff);
+
+      // 配列長のバリデーション
+      if (shortMAAligned.length !== longMA.length) {
+        logger.error(
+          `移動平均線配列長不一致: shortMA=${shortMAAligned.length}, longMA=${longMA.length}`
+        );
+        return { signal: "ERROR", reason: "計算エラー: 配列長不一致" };
+      }
+
+      // インデックスの安全性チェック
+      if (shortMAAligned.length < 2 || longMA.length < 2) {
+        logger.warning("移動平均線データ不足");
+        return { signal: "NEUTRAL", reason: "データ不足" };
+      }
 
       // 現在と1つ前の値を取得
       const currentShortMA = shortMAAligned[shortMAAligned.length - 1];
@@ -106,57 +157,97 @@ class MovingAverageCrossover {
    */
   generateBacktestSignals(candles) {
     if (!candles || candles.length < this.longPeriod + 5) {
+      logger.warning("バックテスト: データ不足");
       return [];
     }
 
-    const signals = [];
-    const closes = candles.map((candle) => candle.close);
+    try {
+      const signals = [];
+      const closes = candles.map((candle) => candle.close);
 
-    // 移動平均線を計算
-    const shortMA = technicalIndicators.SMA.calculate({
-      period: this.shortPeriod,
-      values: closes,
-    });
+      // 移動平均線を計算
+      const shortMA = technicalIndicators.SMA.calculate({
+        period: this.shortPeriod,
+        values: closes,
+      });
 
-    const longMA = technicalIndicators.SMA.calculate({
-      period: this.longPeriod,
-      values: closes,
-    });
+      const longMA = technicalIndicators.SMA.calculate({
+        period: this.longPeriod,
+        values: closes,
+      });
 
-    // 移動平均線の長さを合わせる
-    const startIdx = this.longPeriod - 1;
+      // インデックスを調整して整合性を確保
+      // 短期MAと長期MAの開始インデックスを計算
+      const longMAStartIndex = this.longPeriod - 1; // 長期MAが計算可能になる最初のインデックス
+      const shortMAStartIndex = this.shortPeriod - 1; // 短期MAが計算可能になる最初のインデックス
+      const signalStartIndex = longMAStartIndex; // シグナル生成開始インデックス（長い方に合わせる）
 
-    // すべてのデータを走査
-    for (let i = 1; i < longMA.length; i++) {
-      const currentShortMA = shortMA[i + (shortMA.length - longMA.length)];
-      const currentLongMA = longMA[i];
-      const prevShortMA = shortMA[i - 1 + (shortMA.length - longMA.length)];
-      const prevLongMA = longMA[i - 1];
+      // 短期MAと長期MAのインデックス差分
+      const indexOffset = longMAStartIndex - shortMAStartIndex;
 
-      // インデックスを調整
-      const candleIdx = i + startIdx;
+      // 短期MAと長期MAの配列長の差分
+      const shortMAOffset = shortMA.length - longMA.length;
 
-      // BUYシグナル
-      if (prevShortMA < prevLongMA && currentShortMA > currentLongMA) {
-        signals.push({
-          type: "BUY",
-          price: candles[candleIdx].close,
-          time: candles[candleIdx].time,
-          candleIndex: candleIdx,
-        });
+      if (shortMA.length === 0 || longMA.length === 0) {
+        logger.error("移動平均線計算エラー: 空の配列");
+        return [];
       }
-      // SELLシグナル
-      else if (prevShortMA > prevLongMA && currentShortMA < currentLongMA) {
-        signals.push({
-          type: "SELL",
-          price: candles[candleIdx].close,
-          time: candles[candleIdx].time,
-          candleIndex: candleIdx,
-        });
+
+      // すべてのデータを走査
+      for (let i = 1; i < longMA.length; i++) {
+        // 配列のインデックスを注意深く計算
+        const shortMAIndex = i + shortMAOffset;
+
+        // インデックスの範囲チェック
+        if (shortMAIndex >= shortMA.length || shortMAIndex - 1 < 0) {
+          logger.debug(
+            `インデックス範囲外: shortMAIndex=${shortMAIndex}, shortMA.length=${shortMA.length}`
+          );
+          continue;
+        }
+
+        const currentShortMA = shortMA[shortMAIndex];
+        const currentLongMA = longMA[i];
+        const prevShortMA = shortMA[shortMAIndex - 1];
+        const prevLongMA = longMA[i - 1];
+
+        // インデックスを調整
+        const candleIndex = i + signalStartIndex;
+
+        // インデックスが範囲内かチェック
+        if (candleIndex >= candles.length) {
+          logger.debug(
+            `キャンドル配列範囲外: candleIndex=${candleIndex}, candles.length=${candles.length}`
+          );
+          continue;
+        }
+
+        // BUYシグナル
+        if (prevShortMA < prevLongMA && currentShortMA > currentLongMA) {
+          signals.push({
+            type: "BUY",
+            price: candles[candleIndex].close,
+            time: candles[candleIndex].time,
+            candleIndex: candleIndex,
+          });
+        }
+        // SELLシグナル
+        else if (prevShortMA > prevLongMA && currentShortMA < currentLongMA) {
+          signals.push({
+            type: "SELL",
+            price: candles[candleIndex].close,
+            time: candles[candleIndex].time,
+            candleIndex: candleIndex,
+          });
+        }
       }
+
+      logger.info(`バックテスト: ${signals.length}件のシグナルを生成しました`);
+      return signals;
+    } catch (error) {
+      logger.error(`バックテストシグナル生成エラー: ${error.message}`);
+      return [];
     }
-
-    return signals;
   }
 
   /**
