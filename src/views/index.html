@@ -1,0 +1,870 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ビットコイン自動取引アプリ</title>
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/css/bootstrap.min.css"
+    />
+    <link rel="stylesheet" href="/css/style.css" />
+  </head>
+  <body>
+    <div class="container-fluid">
+      <!-- ヘッダー -->
+      <header class="bg-dark text-white p-3 mb-3">
+        <div class="d-flex justify-content-between align-items-center">
+          <h1 class="h3 mb-0">ビットコイン自動取引アプリ</h1>
+          <div class="d-flex align-items-center">
+            <div id="connection-status" class="me-3">
+              <span class="badge bg-danger">未接続</span>
+            </div>
+            <div id="current-price">
+              <span class="badge bg-primary">BTCUSDT: --</span>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <!-- メイン -->
+      <div class="row">
+        <!-- サイドバー -->
+        <div class="col-md-3 col-lg-2">
+          <div class="card mb-3">
+            <div class="card-header bg-primary text-white">メニュー</div>
+            <div class="list-group list-group-flush">
+              <a
+                href="#dashboard"
+                class="list-group-item list-group-item-action active"
+                data-bs-toggle="list"
+                >ダッシュボード</a
+              >
+              <a
+                href="#backtest"
+                class="list-group-item list-group-item-action"
+                data-bs-toggle="list"
+                >バックテスト</a
+              >
+              <a
+                href="#strategies"
+                class="list-group-item list-group-item-action"
+                data-bs-toggle="list"
+                >戦略設定</a
+              >
+              <a
+                href="#risk"
+                class="list-group-item list-group-item-action"
+                data-bs-toggle="list"
+                >リスク管理</a
+              >
+              <a
+                href="#settings"
+                class="list-group-item list-group-item-action"
+                data-bs-toggle="list"
+                >システム設定</a
+              >
+            </div>
+          </div>
+
+          <!-- 緊急停止ボタン -->
+          <div class="card mb-3">
+            <div class="card-body text-center">
+              <button id="emergency-stop" class="btn btn-danger btn-lg w-100">
+                緊急停止
+              </button>
+            </div>
+          </div>
+
+          <!-- 稼働状況 -->
+          <div class="card mb-3">
+            <div class="card-header bg-info text-white">稼働状況</div>
+            <div class="card-body">
+              <div class="mb-2">
+                <strong>状態:</strong>
+                <span id="system-status" class="badge bg-secondary"
+                  >停止中</span
+                >
+              </div>
+              <div class="mb-2">
+                <strong>取引戦略:</strong>
+                <span id="current-strategy">選択なし</span>
+              </div>
+              <div class="mb-2">
+                <strong>今日の損益:</strong>
+                <span id="daily-profit">0.00 USD</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- メインコンテンツ -->
+        <div class="col-md-9 col-lg-10">
+          <div class="tab-content">
+            <!-- ダッシュボード -->
+            <div class="tab-pane fade show active" id="dashboard">
+              <div class="row">
+                <div class="col-md-6">
+                  <div class="card mb-3">
+                    <div class="card-header bg-success text-white">
+                      資産状況
+                    </div>
+                    <div class="card-body">
+                      <canvas
+                        id="equity-chart"
+                        width="400"
+                        height="200"
+                      ></canvas>
+                    </div>
+                  </div>
+                </div>
+                <div class="col-md-6">
+                  <div class="card mb-3">
+                    <div class="card-header bg-warning">取引履歴</div>
+                    <div class="card-body">
+                      <div class="table-responsive">
+                        <table class="table table-sm">
+                          <thead>
+                            <tr>
+                              <th>日時</th>
+                              <th>タイプ</th>
+                              <th>価格</th>
+                              <th>量</th>
+                              <th>損益</th>
+                            </tr>
+                          </thead>
+                          <tbody id="trade-history">
+                            <tr>
+                              <td colspan="5" class="text-center">
+                                取引データがありません
+                              </td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="card mb-3">
+                <div class="card-header bg-primary text-white">市場状況</div>
+                <div class="card-body">
+                  <canvas id="price-chart" width="800" height="300"></canvas>
+                </div>
+              </div>
+            </div>
+
+            <!-- バックテスト -->
+            <div class="tab-pane fade" id="backtest">
+              <div class="card mb-3">
+                <div class="card-header bg-primary text-white">
+                  バックテスト設定
+                </div>
+                <div class="card-body">
+                  <ul
+                    class="nav nav-tabs mb-3"
+                    id="backtest-tabs"
+                    role="tablist"
+                  >
+                    <li class="nav-item" role="presentation">
+                      <button
+                        class="nav-link active"
+                        id="backtest-tab"
+                        data-bs-toggle="tab"
+                        data-bs-target="#backtest-simple"
+                        type="button"
+                        role="tab"
+                        aria-controls="backtest-simple"
+                        aria-selected="true"
+                      >
+                        バックテスト
+                      </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                      <button
+                        class="nav-link"
+                        id="optimize-tab"
+                        data-bs-toggle="tab"
+                        data-bs-target="#backtest-optimize"
+                        type="button"
+                        role="tab"
+                        aria-controls="backtest-optimize"
+                        aria-selected="false"
+                      >
+                        パラメータ最適化
+                      </button>
+                    </li>
+                  </ul>
+
+                  <div class="tab-content" id="backtest-tabs-content">
+                    <div
+                      class="tab-pane fade show active"
+                      id="backtest-simple"
+                      role="tabpanel"
+                      aria-labelledby="backtest-tab"
+                    >
+                      <form id="backtest-form">
+                        <div class="row mb-3">
+                          <div class="col-md-4">
+                            <label for="backtest-symbol" class="form-label"
+                              >取引ペア</label
+                            >
+                            <select id="backtest-symbol" class="form-select">
+                              <option value="BTCUSDT">BTCUSDT</option>
+                              <option value="ETHUSDT">ETHUSDT</option>
+                              <option value="BNBUSDT">BNBUSDT</option>
+                            </select>
+                          </div>
+                          <div class="col-md-4">
+                            <label for="backtest-timeframe" class="form-label"
+                              >時間足</label
+                            >
+                            <select id="backtest-timeframe" class="form-select">
+                              <option value="1m">1分</option>
+                              <option value="5m">5分</option>
+                              <option value="15m">15分</option>
+                              <option value="1h" selected>1時間</option>
+                              <option value="4h">4時間</option>
+                              <option value="1d">1日</option>
+                            </select>
+                          </div>
+                          <div class="col-md-4">
+                            <label for="backtest-strategy" class="form-label"
+                              >戦略</label
+                            >
+                            <select id="backtest-strategy" class="form-select">
+                              <option value="MovingAverageCrossover">
+                                移動平均線クロスオーバー
+                              </option>
+                            </select>
+                          </div>
+                        </div>
+
+                        <div class="row mb-3">
+                          <div class="col-md-6">
+                            <label for="backtest-start-date" class="form-label"
+                              >開始日</label
+                            >
+                            <input
+                              type="date"
+                              id="backtest-start-date"
+                              class="form-control"
+                              value="2023-01-01"
+                            />
+                          </div>
+                          <div class="col-md-6">
+                            <label for="backtest-end-date" class="form-label"
+                              >終了日</label
+                            >
+                            <input
+                              type="date"
+                              id="backtest-end-date"
+                              class="form-control"
+                              value="2023-12-31"
+                            />
+                          </div>
+                        </div>
+
+                        <div class="row mb-3">
+                          <div class="col-md-6">
+                            <label
+                              for="backtest-initial-balance"
+                              class="form-label"
+                              >初期資金 (USD)</label
+                            >
+                            <input
+                              type="number"
+                              id="backtest-initial-balance"
+                              class="form-control"
+                              value="10000"
+                              min="100"
+                              step="100"
+                            />
+                          </div>
+                          <div class="col-md-6">
+                            <label
+                              for="backtest-position-size"
+                              class="form-label"
+                              >ポジションサイズ (資金の%)</label
+                            >
+                            <input
+                              type="number"
+                              id="backtest-position-size"
+                              class="form-control"
+                              value="1"
+                              min="0.1"
+                              max="100"
+                              step="0.1"
+                            />
+                          </div>
+                        </div>
+
+                        <div id="strategy-params" class="mb-3">
+                          <label class="form-label">戦略パラメータ</label>
+                          <div class="row">
+                            <div class="col-md-6">
+                              <label for="param-short-period" class="form-label"
+                                >短期移動平均線期間</label
+                              >
+                              <input
+                                type="number"
+                                id="param-short-period"
+                                class="form-control"
+                                value="9"
+                                min="2"
+                                max="50"
+                              />
+                            </div>
+                            <div class="col-md-6">
+                              <label for="param-long-period" class="form-label"
+                                >長期移動平均線期間</label
+                              >
+                              <input
+                                type="number"
+                                id="param-long-period"
+                                class="form-control"
+                                value="21"
+                                min="5"
+                                max="200"
+                              />
+                            </div>
+                          </div>
+                        </div>
+
+                        <button type="submit" class="btn btn-primary">
+                          バックテスト実行
+                        </button>
+                      </form>
+                    </div>
+
+                    <div
+                      class="tab-pane fade"
+                      id="backtest-optimize"
+                      role="tabpanel"
+                      aria-labelledby="optimize-tab"
+                    >
+                      <form id="optimize-form">
+                        <div class="row mb-3">
+                          <div class="col-md-4">
+                            <label for="optimize-symbol" class="form-label"
+                              >取引ペア</label
+                            >
+                            <select id="optimize-symbol" class="form-select">
+                              <option value="BTCUSDT">BTCUSDT</option>
+                              <option value="ETHUSDT">ETHUSDT</option>
+                              <option value="BNBUSDT">BNBUSDT</option>
+                            </select>
+                          </div>
+                          <div class="col-md-4">
+                            <label for="optimize-timeframe" class="form-label"
+                              >時間足</label
+                            >
+                            <select id="optimize-timeframe" class="form-select">
+                              <option value="1m">1分</option>
+                              <option value="5m">5分</option>
+                              <option value="15m">15分</option>
+                              <option value="1h" selected>1時間</option>
+                              <option value="4h">4時間</option>
+                              <option value="1d">1日</option>
+                            </select>
+                          </div>
+                          <div class="col-md-4">
+                            <label for="optimize-strategy" class="form-label"
+                              >戦略</label
+                            >
+                            <select id="optimize-strategy" class="form-select">
+                              <option value="MovingAverageCrossover">
+                                移動平均線クロスオーバー
+                              </option>
+                            </select>
+                          </div>
+                        </div>
+
+                        <div class="row mb-3">
+                          <div class="col-md-6">
+                            <label for="optimize-start-date" class="form-label"
+                              >開始日</label
+                            >
+                            <input
+                              type="date"
+                              id="optimize-start-date"
+                              class="form-control"
+                              value="2023-01-01"
+                            />
+                          </div>
+                          <div class="col-md-6">
+                            <label for="optimize-end-date" class="form-label"
+                              >終了日</label
+                            >
+                            <input
+                              type="date"
+                              id="optimize-end-date"
+                              class="form-control"
+                              value="2023-12-31"
+                            />
+                          </div>
+                        </div>
+
+                        <div class="row mb-3">
+                          <div class="col-md-6">
+                            <label
+                              for="optimize-initial-balance"
+                              class="form-label"
+                              >初期資金 (USD)</label
+                            >
+                            <input
+                              type="number"
+                              id="optimize-initial-balance"
+                              class="form-control"
+                              value="10000"
+                              min="100"
+                              step="100"
+                            />
+                          </div>
+                          <div class="col-md-6">
+                            <label
+                              for="optimize-position-size"
+                              class="form-label"
+                              >ポジションサイズ (資金の%)</label
+                            >
+                            <input
+                              type="number"
+                              id="optimize-position-size"
+                              class="form-control"
+                              value="1"
+                              min="0.1"
+                              max="100"
+                              step="0.1"
+                            />
+                          </div>
+                        </div>
+
+                        <div id="optimization-params" class="mb-3">
+                          <label class="form-label">最適化パラメータ範囲</label>
+                          <div class="row mb-2">
+                            <div class="col-md-4">
+                              <label
+                                for="param-short-period-min"
+                                class="form-label"
+                                >短期MA最小値</label
+                              >
+                              <input
+                                type="number"
+                                id="param-short-period-min"
+                                class="form-control"
+                                value="5"
+                                min="2"
+                                max="50"
+                              />
+                            </div>
+                            <div class="col-md-4">
+                              <label
+                                for="param-short-period-max"
+                                class="form-label"
+                                >短期MA最大値</label
+                              >
+                              <input
+                                type="number"
+                                id="param-short-period-max"
+                                class="form-control"
+                                value="20"
+                                min="2"
+                                max="50"
+                              />
+                            </div>
+                            <div class="col-md-4">
+                              <label
+                                for="param-short-period-step"
+                                class="form-label"
+                                >ステップ</label
+                              >
+                              <input
+                                type="number"
+                                id="param-short-period-step"
+                                class="form-control"
+                                value="1"
+                                min="1"
+                                max="10"
+                              />
+                            </div>
+                          </div>
+                          <div class="row mb-2">
+                            <div class="col-md-4">
+                              <label
+                                for="param-long-period-min"
+                                class="form-label"
+                                >長期MA最小値</label
+                              >
+                              <input
+                                type="number"
+                                id="param-long-period-min"
+                                class="form-control"
+                                value="20"
+                                min="5"
+                                max="200"
+                              />
+                            </div>
+                            <div class="col-md-4">
+                              <label
+                                for="param-long-period-max"
+                                class="form-label"
+                                >長期MA最大値</label
+                              >
+                              <input
+                                type="number"
+                                id="param-long-period-max"
+                                class="form-control"
+                                value="50"
+                                min="5"
+                                max="200"
+                              />
+                            </div>
+                            <div class="col-md-4">
+                              <label
+                                for="param-long-period-step"
+                                class="form-label"
+                                >ステップ</label
+                              >
+                              <input
+                                type="number"
+                                id="param-long-period-step"
+                                class="form-control"
+                                value="1"
+                                min="1"
+                                max="10"
+                              />
+                            </div>
+                          </div>
+                        </div>
+
+                        <div class="row mb-3">
+                          <div class="col-md-4">
+                            <label for="optimization-metric" class="form-label"
+                              >最適化指標</label
+                            >
+                            <select
+                              id="optimization-metric"
+                              class="form-select"
+                            >
+                              <option value="profit">利益額</option>
+                              <option value="profitPercent" selected>
+                                利益率
+                              </option>
+                              <option value="winRate">勝率</option>
+                              <option value="profitFactor">
+                                プロフィットファクター
+                              </option>
+                              <option value="combined">複合スコア</option>
+                            </select>
+                          </div>
+                          <div class="col-md-4">
+                            <label for="population-size" class="form-label"
+                              >母集団サイズ</label
+                            >
+                            <input
+                              type="number"
+                              id="population-size"
+                              class="form-control"
+                              value="20"
+                              min="10"
+                              max="100"
+                            />
+                          </div>
+                          <div class="col-md-4">
+                            <label for="generations" class="form-label"
+                              >世代数</label
+                            >
+                            <input
+                              type="number"
+                              id="generations"
+                              class="form-control"
+                              value="5"
+                              min="1"
+                              max="20"
+                            />
+                          </div>
+                        </div>
+
+                        <button type="submit" class="btn btn-primary">
+                          パラメータ最適化実行
+                        </button>
+                      </form>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="card mb-3 d-none" id="backtest-results-card">
+                <div class="card-header bg-success text-white">
+                  バックテスト結果
+                </div>
+                <div class="card-body">
+                  <div class="row mb-3">
+                    <div class="col-md-6">
+                      <canvas
+                        id="backtest-equity-chart"
+                        width="400"
+                        height="200"
+                      ></canvas>
+                    </div>
+                    <div class="col-md-6">
+                      <table class="table table-sm">
+                        <tbody id="backtest-summary"></tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  <div class="row">
+                    <div class="col-12">
+                      <canvas
+                        id="backtest-price-chart"
+                        width="800"
+                        height="300"
+                      ></canvas>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="card mb-3 d-none" id="optimization-results-card">
+                <div class="card-header bg-info text-white">最適化結果</div>
+                <div class="card-body">
+                  <div class="row mb-3">
+                    <div class="col-md-6">
+                      <h5>最適パラメータ</h5>
+                      <table class="table table-sm">
+                        <tbody id="optimization-best-params"></tbody>
+                      </table>
+                    </div>
+                    <div class="col-md-6">
+                      <h5>パフォーマンス</h5>
+                      <table class="table table-sm">
+                        <tbody id="optimization-performance"></tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  <div class="row mb-3">
+                    <div class="col-12">
+                      <h5>上位結果</h5>
+                      <div class="table-responsive">
+                        <table class="table table-sm table-hover">
+                          <thead>
+                            <tr>
+                              <th>短期MA</th>
+                              <th>長期MA</th>
+                              <th>利益率</th>
+                              <th>勝率</th>
+                              <th>取引回数</th>
+                              <th>プロフィットファクター</th>
+                              <th>適合度</th>
+                            </tr>
+                          </thead>
+                          <tbody id="optimization-results-table"></tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </div>
+
+                  <button id="apply-best-params" class="btn btn-success">
+                    最適パラメータを適用
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- 戦略設定 -->
+            <div class="tab-pane fade" id="strategies">
+              <div class="card mb-3">
+                <div class="card-header bg-primary text-white">
+                  利用可能な戦略
+                </div>
+                <div class="card-body">
+                  <div class="list-group" id="strategy-list">
+                    <a
+                      href="#"
+                      class="list-group-item list-group-item-action active"
+                      data-strategy="MovingAverageCrossover"
+                    >
+                      <div class="d-flex w-100 justify-content-between">
+                        <h5 class="mb-1">移動平均線クロスオーバー</h5>
+                      </div>
+                      <p class="mb-1">
+                        短期移動平均線と長期移動平均線のクロスポイントで売買を行う戦略
+                      </p>
+                    </a>
+                  </div>
+                </div>
+              </div>
+
+              <div class="card mb-3">
+                <div class="card-header bg-warning">戦略設定</div>
+                <div class="card-body" id="strategy-config">
+                  <form id="strategy-form">
+                    <div class="mb-3">
+                      <label for="strategy-short-period" class="form-label"
+                        >短期移動平均線期間</label
+                      >
+                      <input
+                        type="number"
+                        id="strategy-short-period"
+                        class="form-control"
+                        value="9"
+                        min="2"
+                        max="50"
+                      />
+                    </div>
+                    <div class="mb-3">
+                      <label for="strategy-long-period" class="form-label"
+                        >長期移動平均線期間</label
+                      >
+                      <input
+                        type="number"
+                        id="strategy-long-period"
+                        class="form-control"
+                        value="21"
+                        min="5"
+                        max="200"
+                      />
+                    </div>
+                    <button type="submit" class="btn btn-primary">保存</button>
+                  </form>
+                </div>
+              </div>
+            </div>
+
+            <!-- リスク管理 -->
+            <div class="tab-pane fade" id="risk">
+              <div class="card mb-3">
+                <div class="card-header bg-danger text-white">リスク設定</div>
+                <div class="card-body">
+                  <form id="risk-form">
+                    <div class="mb-3">
+                      <label for="max-daily-loss" class="form-label"
+                        >1日の最大損失額 (USD)</label
+                      >
+                      <input
+                        type="number"
+                        id="max-daily-loss"
+                        class="form-control"
+                        value="100"
+                        min="0"
+                      />
+                    </div>
+                    <div class="mb-3">
+                      <label for="max-weekly-loss" class="form-label"
+                        >1週間の最大損失額 (USD)</label
+                      >
+                      <input
+                        type="number"
+                        id="max-weekly-loss"
+                        class="form-control"
+                        value="500"
+                        min="0"
+                      />
+                    </div>
+                    <div class="mb-3">
+                      <label for="max-monthly-loss" class="form-label"
+                        >1ヶ月の最大損失額 (USD)</label
+                      >
+                      <input
+                        type="number"
+                        id="max-monthly-loss"
+                        class="form-control"
+                        value="1000"
+                        min="0"
+                      />
+                    </div>
+                    <div class="mb-3">
+                      <label for="position-size-percent" class="form-label"
+                        >ポジションサイズ (資金の%)</label
+                      >
+                      <input
+                        type="number"
+                        id="position-size-percent"
+                        class="form-control"
+                        value="1"
+                        min="0.1"
+                        max="100"
+                        step="0.1"
+                      />
+                    </div>
+                    <button type="submit" class="btn btn-primary">保存</button>
+                  </form>
+                </div>
+              </div>
+            </div>
+
+            <!-- システム設定 -->
+            <div class="tab-pane fade" id="settings">
+              <div class="card mb-3">
+                <div class="card-header bg-secondary text-white">API設定</div>
+                <div class="card-body">
+                  <form id="api-form">
+                    <div class="mb-3">
+                      <label for="api-key" class="form-label"
+                        >バイナンスAPIキー</label
+                      >
+                      <input
+                        type="text"
+                        id="api-key"
+                        class="form-control"
+                        placeholder="APIキー"
+                      />
+                    </div>
+                    <div class="mb-3">
+                      <label for="api-secret" class="form-label"
+                        >バイナンスAPIシークレット</label
+                      >
+                      <input
+                        type="password"
+                        id="api-secret"
+                        class="form-control"
+                        placeholder="APIシークレット"
+                      />
+                    </div>
+                    <div class="mb-3 form-check">
+                      <input
+                        type="checkbox"
+                        class="form-check-input"
+                        id="use-testnet"
+                      />
+                      <label class="form-check-label" for="use-testnet"
+                        >テストネットを使用する</label
+                      >
+                    </div>
+                    <button type="submit" class="btn btn-primary">保存</button>
+                  </form>
+                </div>
+              </div>
+
+              <div class="card mb-3">
+                <div class="card-header bg-info text-white">システム操作</div>
+                <div class="card-body">
+                  <div class="d-grid gap-2">
+                    <button id="start-trading" class="btn btn-success">
+                      取引開始
+                    </button>
+                    <button id="stop-trading" class="btn btn-warning">
+                      取引停止
+                    </button>
+                    <button id="test-mode" class="btn btn-info">
+                      テストモード
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- JavaScript -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="/js/main.js"></script>
+  </body>
+</html>

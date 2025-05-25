@@ -1,0 +1,132 @@
+/* 全体のスタイル */
+body {
+  font-family: "Helvetica Neue", Arial, sans-serif;
+  background-color: #f5f5f5;
+}
+
+/* ヘッダースタイル */
+header {
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+}
+
+/* カードスタイル */
+.card {
+  margin-bottom: 20px;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+  border: none;
+}
+
+.card-header {
+  font-weight: bold;
+}
+
+/* 緊急停止ボタン */
+#emergency-stop {
+  font-weight: bold;
+  box-shadow: 0 4px 8px rgba(220, 53, 69, 0.3);
+  transition: all 0.3s ease;
+}
+
+#emergency-stop:hover {
+  transform: scale(1.05);
+  box-shadow: 0 6px 12px rgba(220, 53, 69, 0.5);
+}
+
+/* チャートコンテナ */
+canvas {
+  max-width: 100%;
+}
+
+/* テーブルスタイル */
+.table {
+  margin-bottom: 0;
+}
+
+/* フォームスタイル */
+.form-control:focus,
+.form-select:focus {
+  border-color: #0d6efd;
+  box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
+}
+
+/* バッジスタイル */
+.badge {
+  font-size: 0.9em;
+  padding: 0.4em 0.6em;
+}
+
+/* アニメーション */
+@keyframes pulse {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.05);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.pulse {
+  animation: pulse 2s infinite;
+}
+
+/* メディアクエリ - レスポンシブ対応 */
+@media (max-width: 767.98px) {
+  .card-body {
+    padding: 1rem;
+  }
+
+  h1.h3 {
+    font-size: 1.2rem;
+  }
+
+  .table th,
+  .table td {
+    padding: 0.5rem;
+  }
+}
+
+/* カスタム色 */
+.bg-profit {
+  background-color: #28a745;
+  color: white;
+}
+
+.bg-loss {
+  background-color: #dc3545;
+  color: white;
+}
+
+/* 取引履歴テーブル */
+#trade-history tr.profit {
+  background-color: rgba(40, 167, 69, 0.1);
+}
+
+#trade-history tr.loss {
+  background-color: rgba(220, 53, 69, 0.1);
+}
+
+/* タブ切り替えアニメーション */
+.tab-pane.fade {
+  transition: opacity 0.15s linear;
+}
+
+/* カスタムスクロールバー */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f1f1;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #888;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #555;
+}
