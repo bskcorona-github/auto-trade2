@@ -250,7 +250,11 @@ function fetchPriceRegularly() {
 // 現在の価格を取得
 async function fetchCurrentPrice() {
   try {
-    const response = await fetch("/api/price?symbol=BTCUSDT");
+    const response = await fetch("/api/price?symbol=BTCUSDT", {
+      headers: {
+        "x-api-key": "test-api-key",
+      },
+    });
     const data = await response.json();
 
     if (data.success) {
@@ -264,6 +268,9 @@ async function fetchCurrentPrice() {
 // バックテスト実行
 async function handleBacktestSubmit(event) {
   event.preventDefault();
+
+  // バックテスト結果をクリア
+  clearBacktestResults();
 
   const symbol = document.getElementById("backtest-symbol").value;
   const timeframe = document.getElementById("backtest-timeframe").value;
@@ -312,6 +319,7 @@ async function handleBacktestSubmit(event) {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        "x-api-key": "test-api-key",
       },
       body: JSON.stringify({
         symbol,
@@ -345,6 +353,32 @@ async function handleBacktestSubmit(event) {
   }
 }
 
+// バックテスト結果をクリアする関数
+function clearBacktestResults() {
+  // 結果カードを非表示
+  const resultsCard = document.getElementById("backtest-results-card");
+  if (resultsCard) {
+    resultsCard.classList.add("d-none");
+  }
+
+  // サマリーテーブルをクリア
+  const summaryTable = document.getElementById("backtest-summary");
+  if (summaryTable) {
+    summaryTable.innerHTML = "";
+  }
+
+  // チャートを破棄
+  if (backtestEquityChart) {
+    backtestEquityChart.destroy();
+    backtestEquityChart = null;
+  }
+
+  if (backtestPriceChart) {
+    backtestPriceChart.destroy();
+    backtestPriceChart = null;
+  }
+}
+
 // API設定フォームの送信処理
 async function handleApiSubmit(event) {
   event.preventDefault();
@@ -363,6 +397,7 @@ async function handleApiSubmit(event) {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        "x-api-key": "test-api-key",
       },
       body: JSON.stringify({
         BINANCE_API_KEY: apiKey,
@@ -400,6 +435,7 @@ async function handleStrategySubmit(event) {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        "x-api-key": "test-api-key",
       },
       body: JSON.stringify({
         strategyName: "MovingAverageCrossover",
@@ -445,6 +481,7 @@ async function handleRiskSubmit(event) {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        "x-api-key": "test-api-key",
       },
       body: JSON.stringify({
         maxDailyLoss,
@@ -850,79 +887,112 @@ function updateDailyProfit() {
 }
 
 // 取引開始
-function startTrading() {
-  if (!isConnected) {
-    alert("サーバーに接続されていません");
-    return;
-  }
-
-  fetch("/api/trading/start", { method: "POST" })
-    .then((response) => response.json())
-    .then((data) => {
-      if (data.success) {
-        alert("取引を開始しました");
-        updateSystemStatus({ isRunning: true, currentStrategy: data.strategy });
-      } else {
-        alert(`取引開始エラー: ${data.error}`);
-      }
-    })
-    .catch((error) => {
-      console.error("取引開始エラー:", error);
-      alert("取引開始中にエラーが発生しました");
+async function startTrading() {
+  try {
+    const response = await fetch("/api/trading/start", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": "test-api-key",
+      },
     });
+
+    const result = await response.json();
+
+    if (result.success) {
+      isTrading = true;
+      updateSystemStatus({ trading: true, strategy: result.strategy });
+      alert("取引を開始しました");
+    } else {
+      alert(`取引開始エラー: ${result.error}`);
+    }
+  } catch (error) {
+    console.error("取引開始エラー:", error);
+    alert("取引開始中にエラーが発生しました");
+  }
 }
 
 // 取引停止
-function stopTrading() {
-  fetch("/api/trading/stop", { method: "POST" })
-    .then((response) => response.json())
-    .then((data) => {
-      if (data.success) {
-        alert("取引を停止しました");
-        updateSystemStatus({ isRunning: false });
-      } else {
-        alert(`取引停止エラー: ${data.error}`);
-      }
-    })
-    .catch((error) => {
-      console.error("取引停止エラー:", error);
-      alert("取引停止中にエラーが発生しました");
+async function stopTrading() {
+  try {
+    const response = await fetch("/api/trading/stop", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": "test-api-key",
+      },
     });
+
+    const result = await response.json();
+
+    if (result.success) {
+      isTrading = false;
+      updateSystemStatus({ trading: false });
+      alert("取引を停止しました");
+    } else {
+      alert(`取引停止エラー: ${result.error}`);
+    }
+  } catch (error) {
+    console.error("取引停止エラー:", error);
+    alert("取引停止中にエラーが発生しました");
+  }
 }
 
 // 緊急停止
-function emergencyStop() {
-  fetch("/api/trading/emergency-stop", { method: "POST" })
-    .then((response) => response.json())
-    .then((data) => {
-      if (data.success) {
-        alert("緊急停止しました。すべてのポジションが決済されました");
-        updateSystemStatus({ isRunning: false });
-      } else {
-        alert(`緊急停止エラー: ${data.error}`);
-      }
-    })
-    .catch((error) => {
-      console.error("緊急停止エラー:", error);
-      alert("緊急停止中にエラーが発生しました");
+async function emergencyStop() {
+  try {
+    const response = await fetch("/api/trading/emergency-stop", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": "test-api-key",
+      },
     });
+
+    const result = await response.json();
+
+    if (result.success) {
+      isTrading = false;
+      updateSystemStatus({ trading: false, emergencyStopped: true });
+      alert("緊急停止を実行しました");
+    } else {
+      alert(`緊急停止エラー: ${result.error}`);
+    }
+  } catch (error) {
+    console.error("緊急停止エラー:", error);
+    alert("緊急停止中にエラーが発生しました");
+  }
 }
 
 // テストモード切り替え
-function toggleTestMode() {
-  fetch("/api/trading/test-mode", { method: "POST" })
-    .then((response) => response.json())
-    .then((data) => {
-      if (data.success) {
-        alert(`テストモード: ${data.testMode ? "ON" : "OFF"}`);
-      } else {
-        alert(`テストモード切り替えエラー: ${data.error}`);
-      }
-    })
-    .catch((error) => {
-      console.error("テストモード切り替えエラー:", error);
-      alert("テストモード切り替え中にエラーが発生しました");
+async function toggleTestMode() {
+  try {
+    const response = await fetch("/api/trading/test-mode", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": "test-api-key",
+      },
+      body: JSON.stringify({}),
     });
+
+    const result = await response.json();
+
+    if (result.success) {
+      alert(result.message);
+      const testModeStatus = document.getElementById("test-mode-status");
+      if (testModeStatus) {
+        testModeStatus.innerHTML = result.testMode
+          ? '<span class="badge bg-warning">テストモード</span>'
+          : '<span class="badge bg-danger">本番モード</span>';
+      }
+    } else {
+      alert(`テストモード切り替えエラー: ${result.error}`);
+    }
+  } catch (error) {
+    console.error("テストモード切り替えエラー:", error);
+    alert("テストモード切り替え中にエラーが発生しました");
+  }
 }
 
 // ローディング表示
@@ -965,6 +1035,9 @@ function hideLoading() {
 // パラメータ最適化実行
 async function handleOptimizeSubmit(event) {
   event.preventDefault();
+
+  // 最適化結果をクリア
+  clearOptimizationResults();
 
   const symbol = document.getElementById("optimize-symbol").value;
   const timeframe = document.getElementById("optimize-timeframe").value;
@@ -1076,6 +1149,33 @@ async function handleOptimizeSubmit(event) {
     hideLoading();
     console.error("最適化エラー:", error);
     alert("パラメータ最適化中にエラーが発生しました");
+  }
+}
+
+// 最適化結果をクリアする関数
+function clearOptimizationResults() {
+  // 結果カードを非表示
+  const resultsCard = document.getElementById("optimization-results-card");
+  if (resultsCard) {
+    resultsCard.classList.add("d-none");
+  }
+
+  // 最適パラメータテーブルをクリア
+  const bestParamsTable = document.getElementById("optimization-best-params");
+  if (bestParamsTable) {
+    bestParamsTable.innerHTML = "";
+  }
+
+  // パフォーマンステーブルをクリア
+  const performanceTable = document.getElementById("optimization-performance");
+  if (performanceTable) {
+    performanceTable.innerHTML = "";
+  }
+
+  // 結果テーブルをクリア
+  const resultsTable = document.getElementById("optimization-results-table");
+  if (resultsTable) {
+    resultsTable.innerHTML = "";
   }
 }
 

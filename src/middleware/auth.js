@@ -13,6 +13,28 @@ const authEvents = new EventEmitter();
 // APIキー設定
 let apiKeys = {};
 
+// 環境変数からデフォルトAPIキーを取得
+const initializeDefaultApiKeys = () => {
+  const testApiKey = process.env.TEST_API_KEY || "test-api-key";
+  const adminApiKey = process.env.ADMIN_API_KEY || "admin-api-key";
+
+  return {
+    [testApiKey]: {
+      permissions: ["read", "backtest"],
+    },
+    [adminApiKey]: {
+      permissions: ["read", "backtest", "trading", "admin"],
+    },
+    // Binanceテスト用APIキーも追加
+    [process.env.BINANCE_API_KEY]: {
+      permissions: ["read", "backtest", "trading"],
+    },
+  };
+};
+
+// 初期APIキーをセット
+apiKeys = initializeDefaultApiKeys();
+
 // セッション情報ストア
 const sessions = {};
 
@@ -31,7 +53,8 @@ function generateSecureKey(length = 32) {
  */
 function setApiKeys(keys) {
   if (keys && typeof keys === "object") {
-    apiKeys = { ...keys };
+    // 既存のキーとマージ
+    apiKeys = { ...apiKeys, ...keys };
     logger.info("APIキー設定を更新しました");
   }
 }

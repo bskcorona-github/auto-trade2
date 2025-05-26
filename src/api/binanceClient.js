@@ -32,18 +32,25 @@ async function reinitialize(options) {
     throw new Error("有効なAPIオプションが必要です");
   }
 
+  // テストモード時はAPIキーのチェックをスキップ
+  const isTestMode =
+    process.env.NODE_ENV === "development" &&
+    process.env.SKIP_API_VALIDATION === "true";
+
   if (
-    !options.apiKey ||
-    typeof options.apiKey !== "string" ||
-    options.apiKey.trim() === ""
+    !isTestMode &&
+    (!options.apiKey ||
+      typeof options.apiKey !== "string" ||
+      options.apiKey.trim() === "")
   ) {
     throw new Error("有効なAPIキーが必要です");
   }
 
   if (
-    !options.apiSecret ||
-    typeof options.apiSecret !== "string" ||
-    options.apiSecret.trim() === ""
+    !isTestMode &&
+    (!options.apiSecret ||
+      typeof options.apiSecret !== "string" ||
+      options.apiSecret.trim() === "")
   ) {
     throw new Error("有効なAPIシークレットが必要です");
   }

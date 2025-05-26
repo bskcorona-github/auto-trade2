@@ -35,14 +35,15 @@ app.engine("html", (filePath, options, callback) => {
 app.set("views", path.join(__dirname, "views"));
 
 // デフォルトのAPIキーを設定（本番環境では環境変数や設定ファイルから取得）
-auth.setApiKeys({
-  "test-api-key": {
-    permissions: ["read", "backtest"],
-  },
-  "admin-api-key": {
-    permissions: ["read", "backtest", "trading", "admin"],
-  },
-});
+// すでに環境変数から読み込まれるようになったため、追加設定は不要
+// auth.setApiKeys({
+//   "test-api-key": {
+//     permissions: ["read", "backtest"],
+//   },
+//   "admin-api-key": {
+//     permissions: ["read", "backtest", "trading", "admin"],
+//   },
+// });
 
 // ルートページを表示
 app.get("/", (req, res) => {
