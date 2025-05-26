@@ -289,6 +289,9 @@ async function handleBacktestSubmit(event) {
   const longPeriod = parseInt(
     document.getElementById("param-long-period").value
   );
+  const trendPeriod = parseInt(
+    document.getElementById("param-trend-period").value
+  );
 
   // バリデーション
   if (!startDate || !endDate) {
@@ -310,6 +313,17 @@ async function handleBacktestSubmit(event) {
     return;
   }
 
+  // 移動平均線パラメータのバリデーション
+  if (shortPeriod >= longPeriod) {
+    alert("短期MA期間は長期MA期間より小さくする必要があります");
+    return;
+  }
+
+  if (longPeriod >= trendPeriod) {
+    alert("長期MA期間はトレンドMA期間より小さくする必要があります");
+    return;
+  }
+
   try {
     // ローディング表示
     showLoading("バックテスト実行中...");
@@ -328,6 +342,7 @@ async function handleBacktestSubmit(event) {
         strategyParams: {
           shortPeriod,
           longPeriod,
+          trendMaPeriod: trendPeriod,
         },
         startDate,
         endDate,
@@ -429,6 +444,20 @@ async function handleStrategySubmit(event) {
   const longPeriod = parseInt(
     document.getElementById("strategy-long-period").value
   );
+  const trendPeriod = parseInt(
+    document.getElementById("strategy-trend-period").value
+  );
+
+  // パラメータのバリデーション
+  if (shortPeriod >= longPeriod) {
+    alert("短期MA期間は長期MA期間より小さくする必要があります");
+    return;
+  }
+
+  if (longPeriod >= trendPeriod) {
+    alert("長期MA期間はトレンドMA期間より小さくする必要があります");
+    return;
+  }
 
   try {
     const response = await fetch("/api/settings/strategy", {
@@ -442,6 +471,7 @@ async function handleStrategySubmit(event) {
         params: {
           shortPeriod,
           longPeriod,
+          trendMaPeriod: trendPeriod,
         },
       }),
     });
@@ -1071,6 +1101,12 @@ async function handleOptimizeSubmit(event) {
   const longPeriodMax = parseInt(
     document.getElementById("param-long-period-max").value
   );
+  const trendPeriodMin = parseInt(
+    document.getElementById("param-trend-period-min").value
+  );
+  const trendPeriodMax = parseInt(
+    document.getElementById("param-trend-period-max").value
+  );
 
   // バリデーション
   if (!startDate || !endDate) {
@@ -1102,8 +1138,18 @@ async function handleOptimizeSubmit(event) {
     return;
   }
 
+  if (trendPeriodMax <= trendPeriodMin) {
+    alert("トレンドMA最大値は最小値より大きくする必要があります");
+    return;
+  }
+
   if (shortPeriodMax >= longPeriodMin) {
     alert("短期MA最大値は長期MA最小値より小さくする必要があります");
+    return;
+  }
+
+  if (longPeriodMax >= trendPeriodMin) {
+    alert("長期MA最大値はトレンドMA最小値より小さくする必要があります");
     return;
   }
 
@@ -1124,6 +1170,7 @@ async function handleOptimizeSubmit(event) {
         paramRanges: {
           shortPeriod: { min: shortPeriodMin, max: shortPeriodMax },
           longPeriod: { min: longPeriodMin, max: longPeriodMax },
+          trendMaPeriod: { min: trendPeriodMin, max: trendPeriodMax },
         },
         startDate,
         endDate,
@@ -1190,6 +1237,7 @@ function displayOptimizationResults(data) {
   bestParamsTable.innerHTML = `
     <tr><td>短期移動平均線期間:</td><td>${data.bestParams.shortPeriod}</td></tr>
     <tr><td>長期移動平均線期間:</td><td>${data.bestParams.longPeriod}</td></tr>
+    <tr><td>トレンドMA期間:</td><td>${data.bestParams.trendMaPeriod}</td></tr>
   `;
 
   // パフォーマンスを表示
@@ -1242,14 +1290,16 @@ function applyBestParams() {
 
   // テーブルから最適パラメータを取得
   const rows = bestParamsTable.getElementsByTagName("tr");
-  if (rows.length < 2) return;
+  if (rows.length < 3) return;
 
   const shortPeriod = rows[0].cells[1].textContent;
   const longPeriod = rows[1].cells[1].textContent;
+  const trendPeriod = rows[2].cells[1].textContent;
 
   // バックテストタブに値を設定
   document.getElementById("param-short-period").value = shortPeriod;
   document.getElementById("param-long-period").value = longPeriod;
+  document.getElementById("param-trend-period").value = trendPeriod;
 
   // バックテストタブに切り替え
   const backtestTab = document.getElementById("backtest-tab");

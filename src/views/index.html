@@ -303,7 +303,7 @@
                         <div id="strategy-params" class="mb-3">
                           <label class="form-label">戦略パラメータ</label>
                           <div class="row">
-                            <div class="col-md-6">
+                            <div class="col-md-4">
                               <label for="param-short-period" class="form-label"
                                 >短期移動平均線期間</label
                               >
@@ -316,7 +316,7 @@
                                 max="50"
                               />
                             </div>
-                            <div class="col-md-6">
+                            <div class="col-md-4">
                               <label for="param-long-period" class="form-label"
                                 >長期移動平均線期間</label
                               >
@@ -326,6 +326,19 @@
                                 class="form-control"
                                 value="21"
                                 min="5"
+                                max="200"
+                              />
+                            </div>
+                            <div class="col-md-4">
+                              <label for="param-trend-period" class="form-label"
+                                >トレンドMA期間</label
+                              >
+                              <input
+                                type="number"
+                                id="param-trend-period"
+                                class="form-control"
+                                value="50"
+                                min="22"
                                 max="200"
                               />
                             </div>
@@ -536,6 +549,53 @@
                               />
                             </div>
                           </div>
+                          <div class="row mb-2">
+                            <div class="col-md-4">
+                              <label
+                                for="param-trend-period-min"
+                                class="form-label"
+                                >トレンドMA最小値</label
+                              >
+                              <input
+                                type="number"
+                                id="param-trend-period-min"
+                                class="form-control"
+                                value="50"
+                                min="21"
+                                max="200"
+                              />
+                            </div>
+                            <div class="col-md-4">
+                              <label
+                                for="param-trend-period-max"
+                                class="form-label"
+                                >トレンドMA最大値</label
+                              >
+                              <input
+                                type="number"
+                                id="param-trend-period-max"
+                                class="form-control"
+                                value="100"
+                                min="21"
+                                max="200"
+                              />
+                            </div>
+                            <div class="col-md-4">
+                              <label
+                                for="param-trend-period-step"
+                                class="form-label"
+                                >ステップ</label
+                              >
+                              <input
+                                type="number"
+                                id="param-trend-period-step"
+                                class="form-control"
+                                value="5"
+                                min="1"
+                                max="10"
+                              />
+                            </div>
+                          </div>
                         </div>
 
                         <div class="row mb-3">
@@ -725,6 +785,19 @@
                         class="form-control"
                         value="21"
                         min="5"
+                        max="200"
+                      />
+                    </div>
+                    <div class="mb-3">
+                      <label for="strategy-trend-period" class="form-label"
+                        >トレンドMA期間</label
+                      >
+                      <input
+                        type="number"
+                        id="strategy-trend-period"
+                        class="form-control"
+                        value="50"
+                        min="22"
                         max="200"
                       />
                     </div>
