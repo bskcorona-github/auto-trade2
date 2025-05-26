@@ -161,27 +161,37 @@ class BacktestEngine {
     if (!this.position) return;
 
     const exitPrice = this.adjustPrice(signal.price, signal.type);
-    const positionValue = this.position.units * exitPrice;
-    const fee = positionValue * this.fee;
     let profit = 0;
+    let positionValue = 0;
 
     if (this.position.type === "BUY") {
-      // ロングポジションの利益計算
+      // ロングポジションの場合
+      positionValue = this.position.units * exitPrice;
+      const fee = positionValue * this.fee;
+
+      // ロングポジションの利益計算: 売却価値 - 購入コスト - 手数料
       profit =
         positionValue -
         this.position.units * this.position.entryPrice -
         fee -
         this.position.fee;
-    } else {
-      // ショートポジションの利益計算（修正）
-      // 利益 = (エントリー価格 - 決済価格) * 数量 - 手数料
-      profit =
-        (this.position.entryPrice - exitPrice) * this.position.units -
-        fee -
-        this.position.fee;
-    }
 
-    this.currentBalance += positionValue - fee;
+      // 残高を更新
+      this.currentBalance += positionValue - fee;
+    } else {
+      // ショートポジションの場合
+      // 証拠金取引なので、実際に売却する株式はない
+      // 利益は (エントリー価格 - 決済価格) * 数量 - 手数料
+      const entryValue = this.position.units * this.position.entryPrice;
+      const exitValue = this.position.units * exitPrice;
+      const fee = exitValue * this.fee;
+
+      profit = entryValue - exitValue - fee - this.position.fee;
+      positionValue = entryValue; // 参照用の値
+
+      // 残高を更新
+      this.currentBalance += entryValue - exitValue - fee;
+    }
 
     // 取引を記録
     this.trades.push({
@@ -194,11 +204,13 @@ class BacktestEngine {
       entryCandleIndex: this.position.entryCandleIndex,
       exitCandleIndex: signal.candleIndex,
       profit,
-      fee: this.position.fee + fee,
+      fee: this.position.fee + positionValue * this.fee,
     });
 
     logger.debug(
-      `ポジションクローズ: ${this.position.type}, 利益=${profit}, 残高=${this.currentBalance}`
+      `ポジションクローズ: ${this.position.type}, 利益=${profit.toFixed(
+        2
+      )}, 残高=${this.currentBalance.toFixed(2)}`
     );
 
     // 最大ドローダウンを更新
@@ -359,7 +371,14 @@ class BacktestEngine {
           losingTrades.length
         : 0;
 
-    const profitFactor = Math.abs(avgLoss) > 0 ? Math.abs(avgWin / avgLoss) : 0;
+    // ゼロ除算を防止
+    const profitFactor =
+      Math.abs(avgLoss) > 0 && avgWin > 0
+        ? Math.abs(avgWin / avgLoss)
+        : winningTrades.length > 0 && losingTrades.length === 0
+        ? Number.POSITIVE_INFINITY // 勝ちトレードのみの場合は無限大
+        : 0; // それ以外の場合は0
+
     const maxDrawdownPercent = this.maxDrawdown * 100;
 
     return {

@@ -61,9 +61,70 @@ app.post("/api/backtest", async (req, res) => {
       positionSizePercent,
     } = req.body;
 
-    // バックテストに必要なデータを取得
+    // 入力バリデーション
+    if (!symbol || typeof symbol !== "string") {
+      return res
+        .status(400)
+        .json({ success: false, error: "有効な取引ペアが必要です" });
+    }
+
+    if (!timeframe || typeof timeframe !== "string") {
+      return res
+        .status(400)
+        .json({ success: false, error: "有効な時間枠が必要です" });
+    }
+
+    if (!strategyName || typeof strategyName !== "string") {
+      return res
+        .status(400)
+        .json({ success: false, error: "有効な戦略名が必要です" });
+    }
+
+    if (!startDate || !endDate) {
+      return res
+        .status(400)
+        .json({ success: false, error: "有効な開始日と終了日が必要です" });
+    }
+
+    // 日付の妥当性チェック
     const startTime = new Date(startDate).getTime();
     const endTime = new Date(endDate).getTime();
+
+    if (isNaN(startTime) || isNaN(endTime)) {
+      return res
+        .status(400)
+        .json({ success: false, error: "無効な日付形式です" });
+    }
+
+    if (startTime >= endTime) {
+      return res.status(400).json({
+        success: false,
+        error: "開始日は終了日より前である必要があります",
+      });
+    }
+
+    // 数値パラメータのバリデーション
+    if (
+      initialBalance !== undefined &&
+      (isNaN(initialBalance) || initialBalance <= 0)
+    ) {
+      return res.status(400).json({
+        success: false,
+        error: "初期残高は正の数値である必要があります",
+      });
+    }
+
+    if (
+      positionSizePercent !== undefined &&
+      (isNaN(positionSizePercent) ||
+        positionSizePercent <= 0 ||
+        positionSizePercent > 100)
+    ) {
+      return res.status(400).json({
+        success: false,
+        error: "ポジションサイズは0より大きく100以下である必要があります",
+      });
+    }
 
     // 進捗メッセージ
     logger.info(
@@ -82,10 +143,19 @@ app.post("/api/backtest", async (req, res) => {
 
     // 戦略を初期化
     let strategy;
-    if (strategyName === "MovingAverageCrossover") {
-      strategy = new MovingAverageCrossover(strategyParams);
-    } else {
-      throw new Error("サポートされていない戦略です");
+    try {
+      if (strategyName === "MovingAverageCrossover") {
+        strategy = new MovingAverageCrossover(strategyParams || {});
+      } else {
+        return res
+          .status(400)
+          .json({ success: false, error: "サポートされていない戦略です" });
+      }
+    } catch (strategyError) {
+      return res.status(400).json({
+        success: false,
+        error: `戦略初期化エラー: ${strategyError.message}`,
+      });
     }
 
     // バックテストエンジンを初期化して実行
@@ -105,13 +175,11 @@ app.post("/api/backtest", async (req, res) => {
       );
     }
 
-    // レスポンスデータにローソク足データを含める（必要に応じて一部のみ）
-    // データが大きすぎる場合はサンプルデータのみを返す
+    // インテリジェントなサンプリングを実行
     const maxCandles = 1000; // レスポンスに含めるローソク足の最大数
     let includedCandles = candles;
 
     if (candles.length > maxCandles) {
-      // インテリジェントなサンプリングを実行
       includedCandles = intelligentSampling(
         candles,
         result.signals,
@@ -132,7 +200,7 @@ app.post("/api/backtest", async (req, res) => {
     res.json(responseResult);
   } catch (error) {
     logger.error(`バックテストエラー: ${error.message}`);
-    res.status(500).json({ success: false, error: error.message });
+    res.status(500).json({ success: false, error: "内部サーバーエラー" });
   }
 });
 
@@ -282,31 +350,53 @@ app.post("/api/settings/api", (req, res) => {
   try {
     const { BINANCE_API_KEY, BINANCE_API_SECRET, useTestnet } = req.body;
 
-    if (!BINANCE_API_KEY || !BINANCE_API_SECRET) {
+    // 入力バリデーション
+    if (
+      !BINANCE_API_KEY ||
+      typeof BINANCE_API_KEY !== "string" ||
+      BINANCE_API_KEY.trim() === ""
+    ) {
       return res.status(400).json({
         success: false,
-        error: "APIキーとシークレットが必要です",
+        error: "有効なAPIキーが必要です",
       });
     }
 
-    // 設定を更新
-    process.env.BINANCE_API_KEY = BINANCE_API_KEY;
-    process.env.BINANCE_API_SECRET = BINANCE_API_SECRET;
+    if (
+      !BINANCE_API_SECRET ||
+      typeof BINANCE_API_SECRET !== "string" ||
+      BINANCE_API_SECRET.trim() === ""
+    ) {
+      return res.status(400).json({
+        success: false,
+        error: "有効なAPIシークレットが必要です",
+      });
+    }
 
-    // 環境変数の変更をconfigに反映
-    config.binance.apiKey = BINANCE_API_KEY;
-    config.binance.apiSecret = BINANCE_API_SECRET;
-    config.binance.testnet = useTestnet;
+    // 設定オブジェクトをコピーしてから変更（直接変更しない）
+    const updatedConfig = {
+      ...config,
+      binance: {
+        ...config.binance,
+        apiKey: BINANCE_API_KEY,
+        apiSecret: BINANCE_API_SECRET,
+        testnet: Boolean(useTestnet),
+      },
+    };
 
-    // Binanceクライアントを再初期化
-    binanceClient.reinitialize(config.binance);
+    // 環境変数を直接変更せず、新しい設定オブジェクトを使用
+    // process.env.BINANCE_API_KEY = BINANCE_API_KEY;
+    // process.env.BINANCE_API_SECRET = BINANCE_API_SECRET;
 
-    logger.info("API設定を更新しました");
+    // Binanceクライアントを新しい設定で再初期化
+    binanceClient.reinitialize(updatedConfig.binance);
+
+    logger.info("API設定を安全に更新しました");
 
     res.json({ success: true, message: "API設定を更新しました" });
   } catch (error) {
     logger.error(`API設定更新エラー: ${error.message}`);
-    res.status(500).json({ success: false, error: error.message });
+    res.status(500).json({ success: false, error: "内部サーバーエラー" });
   }
 });
 
@@ -437,18 +527,42 @@ app.post("/api/trading/emergency-stop", (req, res) => {
 // APIエンドポイント - テストモード切り替え
 app.post("/api/trading/test-mode", (req, res) => {
   try {
-    // テストモードの切り替え（実際の実装ではトグル）
-    const testMode = true;
-    logger.info(`テストモード: ${testMode ? "ON" : "OFF"}`);
+    // テストモードのステータスを取得または反転
+    const currentTestMode = config.binance.testnet || false;
+    const newTestMode =
+      req.body.testMode !== undefined
+        ? Boolean(req.body.testMode)
+        : !currentTestMode;
 
-    res.json({
-      success: true,
-      testMode,
-      message: `テストモード: ${testMode ? "ON" : "OFF"}`,
-    });
+    // 設定を更新（コピーしてから変更）
+    const updatedConfig = {
+      ...config,
+      binance: {
+        ...config.binance,
+        testnet: newTestMode,
+      },
+    };
+
+    // Binanceクライアントを新しい設定で再初期化
+    binanceClient
+      .reinitialize(updatedConfig.binance)
+      .then(() => {
+        logger.info(`テストモード: ${newTestMode ? "ON" : "OFF"}`);
+        res.json({
+          success: true,
+          testMode: newTestMode,
+          message: `テストモード: ${newTestMode ? "ON" : "OFF"}`,
+        });
+      })
+      .catch((error) => {
+        logger.error(`テストモード切り替えエラー: ${error.message}`);
+        res
+          .status(500)
+          .json({ success: false, error: "設定の適用に失敗しました" });
+      });
   } catch (error) {
     logger.error(`テストモード切り替えエラー: ${error.message}`);
-    res.status(500).json({ success: false, error: error.message });
+    res.status(500).json({ success: false, error: "内部サーバーエラー" });
   }
 });
 

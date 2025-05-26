@@ -2,6 +2,10 @@ const Binance = require("binance-api-node").default;
 const config = require("../config/config");
 const logger = require("../utils/logger");
 
+// クライアント初期化を同期的に保護するためのロック
+let isInitializing = false;
+let initializationQueue = [];
+
 // Binance APIクライアントのインスタンス作成
 let client = createClient(config.binance);
 
@@ -21,10 +25,81 @@ function createClient(options) {
  * Binanceクライアントを再初期化
  * @param {Object} options - API設定
  */
-function reinitialize(options) {
-  client = createClient(options);
-  logger.info("Binanceクライアントを再初期化しました");
-  return client;
+async function reinitialize(options) {
+  // 既に初期化中の場合はキューに追加
+  if (isInitializing) {
+    return new Promise((resolve, reject) => {
+      initializationQueue.push({ options, resolve, reject });
+    });
+  }
+
+  isInitializing = true;
+
+  try {
+    client = createClient(options);
+    logger.info("Binanceクライアントを再初期化しました");
+
+    // キューに溜まったリクエストを処理
+    while (initializationQueue.length > 0) {
+      const { options: queuedOptions, resolve } = initializationQueue.shift();
+      client = createClient(queuedOptions);
+      logger.info(
+        "キューに溜まったBinanceクライアント初期化リクエストを処理しました"
+      );
+      resolve(client);
+    }
+
+    return client;
+  } catch (error) {
+    // エラー発生時もキューを処理
+    initializationQueue.forEach(({ reject }) => reject(error));
+    initializationQueue = [];
+
+    logger.error(`Binanceクライアント初期化エラー: ${error.message}`);
+    throw error;
+  } finally {
+    isInitializing = false;
+  }
+}
+
+/**
+ * API呼び出しを実行し、エラーをハンドリング
+ * @param {Function} apiCall - API呼び出し関数
+ * @param {string} errorPrefix - エラーメッセージのプレフィックス
+ * @param {number} retries - リトライ回数
+ * @returns {Promise<any>} - API呼び出し結果
+ */
+async function executeApiCall(apiCall, errorPrefix, retries = 3) {
+  try {
+    return await apiCall();
+  } catch (error) {
+    // リトライ可能なエラーかチェック
+    const isRetryableError =
+      error.code === 429 || // レート制限
+      error.code === -1003 || // IP制限
+      (error.code >= 500 && error.code < 600); // サーバーエラー
+
+    if (isRetryableError && retries > 0) {
+      // リトライ間隔を計算（指数バックオフ）
+      const retryDelay = Math.min(1000 * Math.pow(2, 3 - retries), 10000);
+      logger.warning(
+        `${errorPrefix}: リトライします (残り${retries}回) ${retryDelay}ms後`
+      );
+
+      await new Promise((resolve) => setTimeout(resolve, retryDelay));
+      return executeApiCall(apiCall, errorPrefix, retries - 1);
+    }
+
+    // BinanceのAPI固有のエラー情報を保持
+    const detailedError = new Error(`${errorPrefix}: ${error.message}`);
+    detailedError.code = error.code;
+    detailedError.apiError = error;
+
+    logger.error(
+      `${errorPrefix}: ${error.message} (コード: ${error.code || "なし"})`
+    );
+    throw detailedError;
+  }
 }
 
 /**
@@ -33,13 +108,10 @@ function reinitialize(options) {
  * @returns {Promise<number>} - 現在の価格
  */
 async function getCurrentPrice(symbol = config.trading.defaultSymbol) {
-  try {
+  return executeApiCall(async () => {
     const ticker = await client.prices({ symbol });
     return parseFloat(ticker[symbol]);
-  } catch (error) {
-    logger.error(`価格取得エラー: ${error.message}`);
-    throw error;
-  }
+  }, `価格取得エラー (${symbol})`);
 }
 
 /**
@@ -47,7 +119,7 @@ async function getCurrentPrice(symbol = config.trading.defaultSymbol) {
  * @returns {Promise<Object>} - アカウント情報
  */
 async function getAccountBalance() {
-  try {
+  return executeApiCall(async () => {
     const account = await client.accountInfo();
     return account.balances.reduce((acc, balance) => {
       if (parseFloat(balance.free) > 0 || parseFloat(balance.locked) > 0) {
@@ -58,10 +130,7 @@ async function getAccountBalance() {
       }
       return acc;
     }, {});
-  } catch (error) {
-    logger.error(`アカウント残高取得エラー: ${error.message}`);
-    throw error;
-  }
+  }, "アカウント残高取得エラー");
 }
 
 /**
@@ -70,12 +139,10 @@ async function getAccountBalance() {
  * @returns {Promise<Object>} - 注文情報
  */
 async function createOrder(orderParams) {
-  try {
-    return await client.order(orderParams);
-  } catch (error) {
-    logger.error(`注文作成エラー: ${error.message}`);
-    throw error;
-  }
+  return executeApiCall(
+    async () => await client.order(orderParams),
+    "注文作成エラー"
+  );
 }
 
 /**
@@ -118,6 +185,7 @@ async function getCandles({
         const allCandles = [];
         let currentStartTime = startTime;
         let requestCount = 0;
+        let errorCount = 0;
         const startTimestamp = Date.now();
 
         while (currentStartTime < endTime) {
@@ -127,28 +195,49 @@ async function getCandles({
             endTime
           );
 
-          // データを取得して追加（スプレッド演算子を使わない）
-          const chunkCandles = await fetchCandlesChunk(
-            symbol,
-            interval,
-            limit,
-            currentStartTime,
-            chunkEndTime
-          );
+          try {
+            // データを取得して追加（スプレッド演算子を使わない）
+            const chunkCandles = await fetchCandlesChunk(
+              symbol,
+              interval,
+              limit,
+              currentStartTime,
+              chunkEndTime
+            );
 
-          // 効率的な配列追加
-          for (const candle of chunkCandles) {
-            allCandles.push(candle);
-          }
+            // 効率的な配列追加
+            for (const candle of chunkCandles) {
+              allCandles.push(candle);
+            }
 
-          // 次のチャンクの開始時間を設定（最後のローソク足の次から）
-          if (chunkCandles.length > 0) {
-            // 最後のローソク足の時間 + 間隔
-            currentStartTime =
-              chunkCandles[chunkCandles.length - 1].time + intervalMs;
-          } else {
-            // データがない場合は次のチャンクへ
-            currentStartTime = chunkEndTime + 1;
+            // 次のチャンクの開始時間を設定（最後のローソク足の次から）
+            if (chunkCandles.length > 0) {
+              // 最後のローソク足の時間 + 間隔
+              currentStartTime =
+                chunkCandles[chunkCandles.length - 1].time + intervalMs;
+            } else {
+              // データがない場合は次のチャンクへ
+              currentStartTime = chunkEndTime + 1;
+            }
+
+            // エラーカウントをリセット
+            errorCount = 0;
+          } catch (error) {
+            errorCount++;
+
+            // 連続エラーが多すぎる場合は中止
+            if (errorCount >= 5) {
+              throw new Error(
+                `データ取得中に連続エラーが発生しました: ${error.message}`
+              );
+            }
+
+            // エラー時は少し待機してから再試行
+            logger.warning(
+              `データ取得エラー (${errorCount}回目): ${error.message}. 再試行します...`
+            );
+            await new Promise((resolve) => setTimeout(resolve, 2000));
+            continue;
           }
 
           // リクエストカウントを増やす
@@ -196,8 +285,9 @@ async function getCandles({
       );
     }
   } catch (error) {
-    logger.error(`ローソク足データ取得エラー: ${error.message}`);
-    throw error;
+    const errorMsg = `ローソク足データ取得エラー: ${error.message}`;
+    logger.error(errorMsg);
+    throw new Error(errorMsg);
   }
 }
 
@@ -206,22 +296,24 @@ async function getCandles({
  * @private
  */
 async function fetchCandlesChunk(symbol, interval, limit, startTime, endTime) {
-  const candles = await client.candles({
-    symbol,
-    interval,
-    limit,
-    startTime,
-    endTime,
-  });
+  return executeApiCall(async () => {
+    const candles = await client.candles({
+      symbol,
+      interval,
+      limit,
+      startTime,
+      endTime,
+    });
 
-  return candles.map((candle) => ({
-    time: candle.openTime,
-    open: parseFloat(candle.open),
-    high: parseFloat(candle.high),
-    low: parseFloat(candle.low),
-    close: parseFloat(candle.close),
-    volume: parseFloat(candle.volume),
-  }));
+    return candles.map((candle) => ({
+      time: candle.openTime,
+      open: parseFloat(candle.open),
+      high: parseFloat(candle.high),
+      low: parseFloat(candle.low),
+      close: parseFloat(candle.close),
+      volume: parseFloat(candle.volume),
+    }));
+  }, `ローソク足データチャンク取得エラー (${symbol}, ${interval})`);
 }
 
 /**

@@ -1,59 +1,92 @@
 const fs = require("fs");
 const path = require("path");
-
-// ログディレクトリの作成
-const logDir = path.join(__dirname, "../../logs");
-if (!fs.existsSync(logDir)) {
-  fs.mkdirSync(logDir, { recursive: true });
-}
-
-// 現在の日付を取得
-const getDateString = () => {
-  const now = new Date();
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(
-    2,
-    "0"
-  )}-${String(now.getDate()).padStart(2, "0")}`;
-};
-
-// タイムスタンプを取得
-const getTimestamp = () => {
-  const now = new Date();
-  return `${now.toISOString()}`;
-};
+const { format } = require("util");
 
 // ログレベル
-const LogLevel = {
-  DEBUG: "DEBUG",
-  INFO: "INFO",
-  WARNING: "WARNING",
-  ERROR: "ERROR",
+const LOG_LEVELS = {
+  DEBUG: 0,
+  INFO: 1,
+  WARNING: 2,
+  ERROR: 3,
 };
 
-// ログメッセージを記録する関数
-function logMessage(level, message) {
-  const timestamp = getTimestamp();
-  const logEntry = `[${timestamp}] [${level}] ${message}\n`;
+// 現在のログレベル（環境変数から取得またはデフォルト値）
+const currentLogLevel = LOG_LEVELS[process.env.LOG_LEVEL] || LOG_LEVELS.INFO;
 
-  // コンソールに出力
-  console.log(logEntry);
+// ログディレクトリを作成
+const logDir = path.join(__dirname, "../../logs");
+try {
+  if (!fs.existsSync(logDir)) {
+    fs.mkdirSync(logDir, { recursive: true });
+  }
+} catch (error) {
+  console.error(`ログディレクトリ作成エラー: ${error.message}`);
+}
 
-  // ファイルに書き込み
-  const dateStr = getDateString();
-  const logFilePath = path.join(logDir, `${dateStr}.log`);
+// 現在の日付からログファイル名を生成
+function getLogFileName() {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}.log`;
+}
 
-  fs.appendFileSync(logFilePath, logEntry);
+// ログファイルのパスを取得
+const logFilePath = path.join(logDir, getLogFileName());
 
-  // エラーの場合は別ファイルにも記録
-  if (level === LogLevel.ERROR) {
-    const errorLogPath = path.join(logDir, `${dateStr}-errors.log`);
-    fs.appendFileSync(errorLogPath, logEntry);
+/**
+ * メッセージをログに記録
+ * @param {string} level - ログレベル
+ * @param {string} message - ログメッセージ
+ */
+function log(level, message) {
+  // ログレベルをチェック
+  if (LOG_LEVELS[level] < currentLogLevel) return;
+
+  try {
+    const timestamp = new Date().toISOString();
+    // ログメッセージをサニタイズ
+    const sanitizedMessage = sanitizeLogMessage(message);
+    const logEntry = `[${timestamp}] [${level}] ${sanitizedMessage}\n`;
+
+    // 非同期でファイルに書き込み
+    fs.appendFile(logFilePath, logEntry, (err) => {
+      if (err) {
+        console.error(`ログ書き込みエラー: ${err.message}`);
+      }
+    });
+
+    // コンソールにも出力
+    console.log(`${level}: ${sanitizedMessage}`);
+  } catch (error) {
+    console.error(`ログエラー: ${error.message}`);
   }
 }
 
+/**
+ * ログメッセージをサニタイズ
+ * @param {string} message - 元のメッセージ
+ * @returns {string} - サニタイズされたメッセージ
+ */
+function sanitizeLogMessage(message) {
+  if (typeof message !== "string") {
+    // 文字列でない場合は安全に変換
+    try {
+      message = format(message);
+    } catch (e) {
+      return "[変換不可能なメッセージ]";
+    }
+  }
+
+  // 改行、タブなどの制御文字を置換（日本語などの非ASCII文字は保持）
+  return message.replace(/[\r\n\t\v\f]/g, " ");
+}
+
+// ログ関数をエクスポート
 module.exports = {
-  debug: (message) => logMessage(LogLevel.DEBUG, message),
-  info: (message) => logMessage(LogLevel.INFO, message),
-  warning: (message) => logMessage(LogLevel.WARNING, message),
-  error: (message) => logMessage(LogLevel.ERROR, message),
+  debug: (message) => log("DEBUG", message),
+  info: (message) => log("INFO", message),
+  warning: (message) => log("WARNING", message),
+  error: (message) => log("ERROR", message),
 };
