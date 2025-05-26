@@ -359,25 +359,44 @@ class BacktestEngine {
     const winRate =
       totalTrades > 0 ? (winningTrades.length / totalTrades) * 100 : 0;
 
+    // 勝ちトレードの平均利益
     const avgWin =
       winningTrades.length > 0
         ? winningTrades.reduce((sum, trade) => sum + trade.profit, 0) /
           winningTrades.length
         : 0;
 
+    // 負けトレードの平均損失
     const avgLoss =
       losingTrades.length > 0
         ? losingTrades.reduce((sum, trade) => sum + trade.profit, 0) /
           losingTrades.length
         : 0;
 
-    // ゼロ除算を防止
-    const profitFactor =
-      Math.abs(avgLoss) > 0 && avgWin > 0
-        ? Math.abs(avgWin / avgLoss)
-        : winningTrades.length > 0 && losingTrades.length === 0
-        ? Number.POSITIVE_INFINITY // 勝ちトレードのみの場合は無限大
-        : 0; // それ以外の場合は0
+    // 安全なプロフィットファクター計算
+    let profitFactor = 0;
+
+    if (winningTrades.length > 0) {
+      const totalWinnings = winningTrades.reduce(
+        (sum, trade) => sum + trade.profit,
+        0
+      );
+
+      if (losingTrades.length > 0) {
+        const totalLosses = Math.abs(
+          losingTrades.reduce((sum, trade) => sum + trade.profit, 0)
+        );
+
+        // 損失がゼロでなければ計算、そうでなければ無限大（技術的には大きな数値）
+        profitFactor =
+          totalLosses > 0
+            ? totalWinnings / totalLosses
+            : Number.MAX_SAFE_INTEGER;
+      } else {
+        // 負けトレードがない場合は理論上無限大
+        profitFactor = Number.MAX_SAFE_INTEGER;
+      }
+    }
 
     const maxDrawdownPercent = this.maxDrawdown * 100;
 

@@ -24,35 +24,107 @@ function createClient(options) {
 /**
  * Binanceクライアントを再初期化
  * @param {Object} options - API設定
+ * @returns {Promise<object>} - 初期化されたクライアント
  */
 async function reinitialize(options) {
+  // 入力検証
+  if (!options || typeof options !== "object") {
+    throw new Error("有効なAPIオプションが必要です");
+  }
+
+  if (
+    !options.apiKey ||
+    typeof options.apiKey !== "string" ||
+    options.apiKey.trim() === ""
+  ) {
+    throw new Error("有効なAPIキーが必要です");
+  }
+
+  if (
+    !options.apiSecret ||
+    typeof options.apiSecret !== "string" ||
+    options.apiSecret.trim() === ""
+  ) {
+    throw new Error("有効なAPIシークレットが必要です");
+  }
+
   // 既に初期化中の場合はキューに追加
   if (isInitializing) {
+    logger.info("別の初期化処理が進行中のため、キューに追加します");
     return new Promise((resolve, reject) => {
-      initializationQueue.push({ options, resolve, reject });
+      initializationQueue.push({
+        options,
+        resolve,
+        reject,
+        timestamp: Date.now(),
+      });
     });
   }
 
   isInitializing = true;
+  const initStartTime = Date.now();
 
   try {
+    logger.info("Binanceクライアントの初期化を開始します");
     client = createClient(options);
-    logger.info("Binanceクライアントを再初期化しました");
+
+    // 接続テスト
+    await executeApiCall(
+      async () => await client.time(),
+      "Binance API接続テスト"
+    );
+
+    logger.info(
+      `Binanceクライアントを再初期化しました (${Date.now() - initStartTime}ms)`
+    );
+
+    // 古いキューリクエストを破棄（5分以上経過）
+    const MAX_QUEUE_AGE = 5 * 60 * 1000; // 5分
+    initializationQueue = initializationQueue.filter((item) => {
+      const age = Date.now() - item.timestamp;
+      if (age > MAX_QUEUE_AGE) {
+        item.reject(new Error("初期化リクエストがタイムアウトしました"));
+        return false;
+      }
+      return true;
+    });
 
     // キューに溜まったリクエストを処理
     while (initializationQueue.length > 0) {
-      const { options: queuedOptions, resolve } = initializationQueue.shift();
-      client = createClient(queuedOptions);
-      logger.info(
-        "キューに溜まったBinanceクライアント初期化リクエストを処理しました"
-      );
-      resolve(client);
+      const {
+        options: queuedOptions,
+        resolve,
+        reject,
+      } = initializationQueue.shift();
+
+      try {
+        // 各キューアイテムで個別に初期化を実行
+        const newClient = createClient(queuedOptions);
+        await executeApiCall(
+          async () => await newClient.time(),
+          "キューされたBinance API接続テスト"
+        );
+
+        logger.info(
+          "キューに溜まったBinanceクライアント初期化リクエストを処理しました"
+        );
+        resolve(newClient);
+      } catch (queueError) {
+        logger.error(`キューされた初期化に失敗: ${queueError.message}`);
+        reject(queueError);
+      }
     }
 
     return client;
   } catch (error) {
-    // エラー発生時もキューを処理
-    initializationQueue.forEach(({ reject }) => reject(error));
+    // エラー発生時もキューを処理（拒否）
+    initializationQueue.forEach(({ reject }) => {
+      reject(
+        new Error(
+          `初期化の失敗により関連リクエストが中断されました: ${error.message}`
+        )
+      );
+    });
     initializationQueue = [];
 
     logger.error(`Binanceクライアント初期化エラー: ${error.message}`);
@@ -342,6 +414,65 @@ function getIntervalInMs(interval) {
   return intervalMap[interval] || 60 * 60 * 1000; // デフォルトは1時間
 }
 
+/**
+ * Binanceクライアントユーティリティ関数
+ * 様々なセキュリティ強化と検証機能を追加
+ */
+
+/**
+ * APIキーとシークレットを検証
+ * @param {string} apiKey - BinanceのAPIキー
+ * @param {string} apiSecret - BinanceのAPIシークレット
+ * @returns {Promise<boolean>} - 有効な場合はtrue
+ */
+async function validateApiCredentials(apiKey, apiSecret) {
+  if (
+    !apiKey ||
+    !apiSecret ||
+    typeof apiKey !== "string" ||
+    typeof apiSecret !== "string" ||
+    apiKey.trim() === "" ||
+    apiSecret.trim() === ""
+  ) {
+    return false;
+  }
+
+  // テスト接続を試行
+  try {
+    const tempClient = createClient({
+      apiKey,
+      apiSecret,
+      testnet: true, // 検証時は常にテストネットを使用
+    });
+
+    // 接続テスト - 残高照会は権限が必要なため良いテスト
+    await tempClient.accountInfo();
+    return true;
+  } catch (error) {
+    logger.warning(`APIキー検証失敗: ${error.message}`);
+    return false;
+  }
+}
+
+/**
+ * 安全にAPIキー情報を取得（機密情報を隠す）
+ * @returns {Object} - 安全なAPIキー情報
+ */
+function getSafeApiInfo() {
+  const apiKey = config.binance.apiKey || "";
+  const apiSecret = config.binance.apiSecret || "";
+
+  return {
+    hasApiKey: apiKey.length > 0,
+    hasApiSecret: apiSecret.length > 0,
+    apiKeyMasked:
+      apiKey.length > 8
+        ? `${apiKey.substring(0, 4)}...${apiKey.substring(apiKey.length - 4)}`
+        : "未設定",
+    testnet: !!config.binance.testnet,
+  };
+}
+
 module.exports = {
   client,
   reinitialize,
@@ -349,4 +480,6 @@ module.exports = {
   getAccountBalance,
   createOrder,
   getCandles,
+  validateApiCredentials,
+  getSafeApiInfo,
 };

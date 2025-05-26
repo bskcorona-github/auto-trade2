@@ -79,8 +79,20 @@ function sanitizeLogMessage(message) {
     }
   }
 
-  // 改行、タブなどの制御文字を置換（日本語などの非ASCII文字は保持）
-  return message.replace(/[\r\n\t\v\f]/g, " ");
+  // セキュリティのためにコントロールシーケンスやログフォーマットを改ざんする可能性のある文字を無害化
+  // 改行やタブを空白に置換
+  message = message.replace(/[\r\n\t\v\f]/g, " ");
+
+  // ANSI制御シーケンス（カラーコードなど）を削除
+  message = message.replace(/\x1b\[[0-9;]*[mGKHF]/g, "");
+
+  // ログエントリを改ざんする可能性のある文字列パターンを置換
+  message = message.replace(
+    /\[\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}.*?\]/g,
+    "[FILTERED]"
+  );
+
+  return message;
 }
 
 // ログ関数をエクスポート

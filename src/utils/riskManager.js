@@ -327,6 +327,19 @@ class RiskManager {
 
     logger.info("リスク設定を更新しました");
   }
+
+  /**
+   * リスク設定情報を取得
+   * @returns {Object} - リスク設定情報
+   */
+  getRiskSettings() {
+    return {
+      maxDailyLoss: this.maxDailyLoss,
+      maxWeeklyLoss: this.maxWeeklyLoss,
+      maxMonthlyLoss: this.maxMonthlyLoss,
+      positionSizePercent: this.positionSizePercent,
+    };
+  }
 }
 
 // 設定済みのRiskManagerインスタンスをエクスポート
